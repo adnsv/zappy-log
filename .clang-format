@@ -1,0 +1,9 @@
+BasedOnStyle: LLVM
+
+BreakBeforeBraces: Stroustrup
+PointerAlignment: Left
+BreakConstructorInitializers: BeforeComma
+IndentWidth: 4
+IndentRequiresClause: false
+AccessModifierOffset: -4
+AlignAfterOpenBracket: DontAlign

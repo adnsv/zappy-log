@@ -1,0 +1,7 @@
+.vscode/*.*
+!.vscode/launch.json
+build/
+out/
+.vs/
+
+testdata/*.*
