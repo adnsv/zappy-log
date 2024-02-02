@@ -24,6 +24,9 @@ public:
     logger(logger const&) = default;
     logger(logger&&) = default;
 
+    auto operator=(logger const&) -> logger& = default;
+    auto operator=(logger&&) -> logger& = default;
+
     auto with_attributes(attr_init_list attrs) -> logger;
 
     auto should_log(level v) const -> bool;

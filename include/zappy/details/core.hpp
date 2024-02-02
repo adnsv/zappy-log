@@ -1,9 +1,10 @@
 #pragma once
 
+#include <span>
+#include <vector>
 #include <zappy/details/common.hpp>
 #include <zappy/details/queue.hpp>
 #include <zappy/details/worker.hpp>
-#include <vector>
 
 namespace zappy {
 
@@ -38,6 +39,12 @@ inline auto make_core(std::size_t mq_size,
     return std::make_shared<core>(mq_size, sinks.begin(), sinks.end());
 }
 
+inline auto make_core(std::size_t mq_size, std::span<sink_ptr> sinks)
+    -> std::shared_ptr<core>
+{
+    return std::make_shared<core>(mq_size, sinks.begin(), sinks.end());
+}
+
 template <typename SinkIter>
 inline core::core(std::size_t mq_size, SinkIter begin, SinkIter end)
     : mq{mq_size}
@@ -48,7 +55,7 @@ inline core::core(std::size_t mq_size, SinkIter begin, SinkIter end)
     instances.push_back(this);
 }
 
-core::~core()
+inline core::~core()
 {
     auto _ = std::unique_lock(sink_mtx_);
     auto it = std::find(instances.begin(), instances.end(), this);
@@ -62,18 +69,18 @@ core::~core()
     }
 }
 
-auto core::should_log(level v) const -> bool
+inline auto core::should_log(level v) const -> bool
 {
     return !sinks.empty() && (!levels || levels(v));
 }
 
-void core::write(msg&& m)
+inline void core::write(msg&& m)
 {
     if (should_log(m.level))
         mq.push(std::move(m));
 }
 
-void core::tick()
+inline void core::tick()
 {
     msg m;
     auto _ = std::unique_lock(sink_mtx_);
@@ -84,7 +91,7 @@ void core::tick()
                     s->write(m);
 }
 
-void core::want_thread()
+inline void core::want_thread()
 {
     static bool core_thread_created = false;
     if (core_thread_created)

@@ -68,7 +68,7 @@ inline bool is_msys_pty(int fd) noexcept
 }
 #endif
 
-auto is_terminal(std::streambuf const* osbuf) -> bool
+inline auto is_terminal(std::streambuf const* osbuf) -> bool
 {
     using std::cerr;
     using std::clog;
@@ -98,7 +98,7 @@ auto is_terminal(std::streambuf const* osbuf) -> bool
     return false;
 }
 
-auto is_color_terminal() -> bool
+inline auto is_color_terminal() -> bool
 {
 #ifdef _WIN32
     return true;
