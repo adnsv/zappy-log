@@ -28,9 +28,9 @@ To get started, create one or more sinks:
 // jsonl file sink
 auto all_fsink = zappy::rotating_json_file_sink("filename.jsonl");
 
-// jsonl file sink that only logs error messages
+// jsonl file sink that only logs error and critical messages
 auto err_fsink = zappy::rotating_json_file_sink("filename.errors.jsonl", 
-    zappy::levels(zappy::level::error, zappy::level::error));
+    zappy::levels(zappy::level::error, zappy::level::critical));
 
 // console stdout sink for debug, info, and warn messages
 auto console_out_sink = zappy::stdout_sink(
@@ -38,7 +38,7 @@ auto console_out_sink = zappy::stdout_sink(
 
 // console stderr sink for error messages
 auto console_err_sink = zappy::stderr_sink(
-    zappy::levels(zappy::level::error, zappy::level::error)),   
+    zappy::levels(zappy::level::error, zappy::level::critical)),   
 ```
 
 Then create a core that outputs to these sinks:

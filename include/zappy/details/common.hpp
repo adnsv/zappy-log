@@ -11,10 +11,11 @@
 namespace zappy {
 
 enum class level {
-    debug,
-    info,
-    warn,
-    error,
+    debug, // lowest priority messages for detailed app debugging
+    info,// info is the default logging priority
+    warn,// warning messages are more important than info
+    error,// high priority messages. i.e., If a system is running smoothly, it should not generate any error-level messages
+    critical,// highest priority, critical errors that require special attention
 };
 
 using clock = std::chrono::system_clock;

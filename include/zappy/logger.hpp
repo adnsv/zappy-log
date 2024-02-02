@@ -42,7 +42,7 @@ public:
     }
     void info(std::string const& m, attr_init_list aa = {}) const
     {
-        log(level::debug, m, aa);
+        log(level::info, m, aa);
     }
     void warn(std::string const& m, attr_init_list aa = {}) const
     {
@@ -51,6 +51,10 @@ public:
     void error(std::string const& m, attr_init_list aa = {}) const
     {
         log(level::error, m, aa);
+    }
+    void critical(std::string const& m, attr_init_list aa = {}) const
+    {
+        log(level::critical, m, aa);
     }
 };
 

@@ -12,13 +12,13 @@ auto main() -> int
             // push debug..warn messages to stdout
             zappy::stdout_sink(
                 zappy::levels(zappy::level::debug, zappy::level::warn)),
-            // push error messages to stderr
+            // push error & critical messages to stderr
             zappy::stderr_sink(
-                zappy::levels(zappy::level::error, zappy::level::error)),
+                zappy::levels(zappy::level::error, zappy::level::critical)),
             // push error messages to .errors.jsonl in json format
             zappy::rotating_json_file_sink(fn + ".errors.jsonl",
                 {.max_size = 4096, .max_count = 4},
-                zappy::levels(zappy::level::error, zappy::level::error)),
+                zappy::levels(zappy::level::error, zappy::level::critical)),
             // push all messages to .jsonl in json format
             zappy::rotating_json_file_sink(
                 fn + ".jsonl", {.max_size = 4096, .max_count = 4}),

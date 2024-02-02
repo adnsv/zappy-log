@@ -1,7 +1,7 @@
 #pragma once
 
-#include <zappy/details/common.hpp>
 #include <zappy/details/ansi.hpp>
+#include <zappy/details/common.hpp>
 #include <zappy/details/json-scrambler.hpp>
 #include <zappy/details/stringers.hpp>
 
@@ -64,9 +64,9 @@ inline void to_text(std::string& out, msg const& m)
     auto const level_str = zappy::to_sv(m.level);
     w(level_str);
     w("]");
-    
-    if (auto n = level_str.size(); n < 5) 
-        w(std::string_view("     ").substr(0, 5-n));
+
+    if (auto n = level_str.size(); n < 5)
+        w(std::string_view("     ").substr(0, 5 - n));
 
     w(" ");
     details::json_scramble(w, m.message);
@@ -94,6 +94,7 @@ struct ansi_fmt {
         section info;
         section warn;
         section error;
+        section critical;
     } levels;
 
     section message;
@@ -123,6 +124,8 @@ inline ansi_fmt::ansi_fmt(bool use_ansi_sequences)
     levels.info = {s(ansi::green) + '[', ']' + s(ansi::reset) + ' '};
     levels.warn = {s(ansi::yellow) + '[', ']' + s(ansi::reset) + ' '};
     levels.error = {s(ansi::red) + '[', ']' + s(ansi::reset)};
+    levels.critical = {
+        s(ansi::red) + s(ansi::bold) + '[', ']' + s(ansi::reset)};
 
     message = {" ", ""};
     attr = {
@@ -161,6 +164,9 @@ inline void ansi_fmt::format(std::string& out, msg const& m)
         break;
     case level::warn:
         wsection(levels.warn, level_content);
+        break;
+    case level::critical:
+        wsection(levels.critical, level_content);
         break;
     default:
         wsection(levels.error, level_content);

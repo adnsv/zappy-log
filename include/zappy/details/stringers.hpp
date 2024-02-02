@@ -32,6 +32,8 @@ inline auto to_sv(level v, bool upper_case = false) -> std::string_view
         return upper_case ? "WARN" : "warn";
     case level::error:
         return upper_case ? "ERROR" : "error";
+    case level::critical:
+        return upper_case ? "CRITICAL" : "critical";
     default:
         return "<INVALID>";
     }
