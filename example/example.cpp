@@ -7,7 +7,7 @@ auto main() -> int
 {
 
     auto fn = std::string{"./testdata/logfile"};
-    auto core = zappy::make_core(64,
+    auto core = zappy::make_core(64, // message queue capacity
         {
             // push debug..warn messages to stdout
             zappy::stdout_sink(
