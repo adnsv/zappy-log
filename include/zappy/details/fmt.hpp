@@ -61,8 +61,12 @@ inline void to_text(std::string& out, msg const& m)
     }
 
     w(" [");
-    w(zappy::to_sv(m.level));
+    auto const level_str = zappy::to_sv(m.level);
+    w(level_str);
     w("]");
+    
+    if (auto n = level_str.size(); n < 5) 
+        w(std::string_view("     ").substr(0, 5-n));
 
     w(" ");
     details::json_scramble(w, m.message);
@@ -116,8 +120,8 @@ inline ansi_fmt::ansi_fmt(bool use_ansi_sequences)
 
     level = {" ", ""};
     levels.debug = {s(ansi::blue) + '[', ']' + s(ansi::reset)};
-    levels.info = {s(ansi::green) + '[', ']' + s(ansi::reset)};
-    levels.warn = {s(ansi::yellow) + '[', ']' + s(ansi::reset)};
+    levels.info = {s(ansi::green) + '[', ']' + s(ansi::reset) + ' '};
+    levels.warn = {s(ansi::yellow) + '[', ']' + s(ansi::reset) + ' '};
     levels.error = {s(ansi::red) + '[', ']' + s(ansi::reset)};
 
     message = {" ", ""};
