@@ -95,9 +95,11 @@ struct msg {
 
 using level_filter = std::function<bool(level)>;
 
-inline auto levels(level min_v, level max_v = level::error) -> level_filter
+inline auto levels(level min_v, level max_v = level::critical) -> level_filter
 {
-    return [min_v, max_v](level v) -> bool { return v >= min_v && v <= max_v; };
+    return [min_v, max_v](level v) -> bool { 
+        return v >= min_v && v <= max_v; 
+    };
 }
 
 // sink interface
@@ -109,6 +111,7 @@ struct sink {
     }
     virtual ~sink() {}
     virtual void write(msg const&) = 0;
+    virtual void flush() = 0;
 
     auto should_log(level v) const -> bool { return !levels || levels(v); }
 };

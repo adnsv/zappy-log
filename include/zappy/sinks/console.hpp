@@ -36,6 +36,10 @@ struct console_sink_impl : public sink {
         auto _ = std::unique_lock(global_mux);
         out.write(scratch.data(), scratch.size());
     }
+
+    void flush() override {
+        out.flush();
+    }
 };
 
 } // namespace details

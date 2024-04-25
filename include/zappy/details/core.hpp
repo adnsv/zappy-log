@@ -21,6 +21,8 @@ private:
 
 public:
     level_filter levels;
+    inline static level_filter auto_flush =
+        zappy::levels(level::error, level::critical);
 
     template <typename SinkIter>
     core(std::size_t mq_size, SinkIter begin, SinkIter end);
@@ -30,7 +32,7 @@ public:
 
     void write(msg&& m);
 
-    static void tick();
+    static void flush();
 };
 
 inline auto make_core(std::size_t mq_size,
@@ -80,15 +82,19 @@ inline void core::write(msg&& m)
         mq.push(std::move(m));
 }
 
-inline void core::tick()
+inline void core::flush()
 {
     msg m;
     auto _ = std::unique_lock(sink_mtx_);
-    for (auto& it : instances)
+    for (auto& it : instances) {
         while (it->mq.try_pop(m))
             for (auto&& s : it->sinks)
                 if (s->should_log(m.level))
                     s->write(m);
+
+        for (auto&& s : it->sinks)
+            s->flush();
+    }
 }
 
 inline void core::want_thread()
@@ -102,7 +108,7 @@ inline void core::want_thread()
     static auto t = details::worker{std::chrono::milliseconds{20}, //
         []() {
             // execute core activities
-            core::tick();
+            core::flush();
         }};
 }
 

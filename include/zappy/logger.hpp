@@ -78,15 +78,19 @@ inline auto logger::should_log(level v) const -> bool
 
 inline void logger::log(msg&& m) const
 {
-    if (!should_log(m.level))
+    auto const l = m.level;
+    if (!should_log(l))
         return;
 
     m.logger_name = name_;
     if (!attributes_.empty())
         m.attributes.insert(
             m.attributes.end(), attributes_.begin(), attributes_.end());
-    if (core_)
-        core_->write(std::move(m));
+
+    core_->write(std::move(m));
+
+    if (core::auto_flush && core::auto_flush(l))
+        core::flush();
 }
 
 inline void logger::log(

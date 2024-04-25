@@ -50,6 +50,11 @@ struct rotating_file_sink_impl : public sink {
         scratch += "\n";
         f.write(scratch);
     }
+
+    void flush() {
+        auto _ = std::unique_lock(write_mux);
+        f.flush();
+    }
 };
 
 } // namespace details
