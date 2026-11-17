@@ -49,7 +49,7 @@ constexpr auto gray_idx(std::uint8_t level) -> std::uint8_t
         return 0;
     if (v == 25)
         return 15;
-    return v + 231;
+    return std::uint8_t(v + 231);
 }
 } // namespace internal
 

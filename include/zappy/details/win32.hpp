@@ -13,6 +13,7 @@
 
 #ifdef _WIN32
 
+#include <cstddef>
 #include <cstdint>
 
 struct HINSTANCE__;

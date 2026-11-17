@@ -1,7 +1,9 @@
 // Copyright (c) 2024-2026 Alex Denisov
 #pragma once
 
+#include <array>
 #include <cstddef>
+#include <string>
 #include <string_view>
 
 namespace zappy::details {
@@ -45,81 +47,80 @@ inline auto utf8_seq_len(unsigned char const* p, unsigned char const* end)
     return n;
 }
 
-// json_scramble escapes s for use inside a JSON string. Invalid UTF-8 bytes
-// are replaced with U+FFFD, so the output is always valid JSON.
-template <typename Putter> void json_scramble(Putter put, std::string_view s)
+// json_special[b] is true for bytes that cannot be copied as they are: control
+// characters, '"', '\\', and every byte >= 0x80 (checked as UTF-8).
+inline constexpr auto json_special = [] {
+    auto t = std::array<bool, 256>{};
+    for (int i = 0; i < 0x20; ++i)
+        t[i] = true;
+    t['"'] = t['\\'] = true;
+    for (int i = 0x80; i < 0x100; ++i)
+        t[i] = true;
+    return t;
+}();
+
+// json_scramble appends s to out, escaped for use inside a JSON string.
+// Invalid UTF-8 bytes are replaced with �, so the output is always valid
+// JSON. Runs of ordinary bytes are copied in one go.
+inline void json_scramble(std::string& out, std::string_view s)
 {
-    if (s.empty())
-        return;
+    auto p = reinterpret_cast<unsigned char const*>(s.data());
+    auto const end = p + s.size();
+    auto run = p; // start of the pending run of bytes to copy as they are
 
-    auto start = s.data();
-    auto end = s.data() + s.size();
-    auto cursor = start;
-
-    auto replace = [&](std::string_view with) {
-        put({start, size_t(cursor - start)});
-        ++cursor;
-        start = cursor;
-        put(with);
+    auto flush_run = [&] {
+        out.append(reinterpret_cast<char const*>(run), std::size_t(p - run));
     };
 
-    while (cursor != end) {
-        auto cp = *cursor;
-
-        switch (cp) {
-
+    while (p != end) {
+        if (!json_special[*p]) {
+            ++p;
+            continue;
+        }
+        if (*p >= 0x80) {
+            if (auto n = utf8_seq_len(p, end)) {
+                p += n; // valid UTF-8 stays in the run
+                continue;
+            }
+            flush_run();
+            out += "\\ufffd";
+            run = ++p;
+            continue;
+        }
+        flush_run();
+        switch (*p) {
+        case '"':
+            out += "\\\"";
+            break;
+        case '\\':
+            out += "\\\\";
+            break;
         case '\b':
-            replace("\\b");
+            out += "\\b";
             break;
         case '\f':
-            replace("\\f");
+            out += "\\f";
             break;
         case '\n':
-            replace("\\n");
+            out += "\\n";
             break;
         case '\r':
-            replace("\\r");
+            out += "\\r";
             break;
         case '\t':
-            replace("\\t");
+            out += "\\t";
             break;
-
-        case '\\':
-            replace("\\\\");
-            break;
-
-        case '"':
-            replace("\\\"");
-            break;
-
-        default:
-            if (static_cast<unsigned char>(cp) <= '\x0f') {
-                char buf[] = "\\u0000";
-                buf[5] += cp;
-                if (cp >= '\x0a')
-                    buf[5] += 'a' - ':';
-                replace(buf);
-            }
-            else if (static_cast<unsigned char>(cp) <= '\x1f') {
-                char buf[] = "\\u0010";
-                buf[5] += cp - 16;
-                if (cp >= '\x1a')
-                    buf[5] += 'a' - ':';
-                replace(buf);
-            }
-            else if (static_cast<unsigned char>(cp) < 0x80)
-                ++cursor;
-            else if (auto n = utf8_seq_len(
-                         reinterpret_cast<unsigned char const*>(cursor),
-                         reinterpret_cast<unsigned char const*>(end)))
-                cursor += n;
-            else
-                replace("\\ufffd"); // invalid UTF-8 byte
+        default: {
+            static constexpr char hex[] = "0123456789abcdef";
+            char buf[] = "\\u00XX";
+            buf[4] = hex[*p >> 4];
+            buf[5] = hex[*p & 0xf];
+            out.append(buf, 6);
         }
+        }
+        run = ++p;
     }
-    if (cursor != start) {
-        put({start, size_t(cursor - start)});
-    }
+    flush_run();
 }
 
-}
+} // namespace zappy::details

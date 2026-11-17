@@ -105,6 +105,19 @@ inline auto is_terminal(std::streambuf const* osbuf) -> bool
     return false;
 }
 
+// env returns an environment variable, or null when it is not set.
+inline auto env(char const* name) -> char const*
+{
+#ifdef _MSC_VER
+#pragma warning(push)
+#pragma warning(disable : 4996) // getenv is fine here: read-only, at startup
+#endif
+    return std::getenv(name);
+#ifdef _MSC_VER
+#pragma warning(pop)
+#endif
+}
+
 // color_from_env decides from NO_COLOR, COLORTERM and TERM (null when unset)
 // whether a terminal takes ANSI colors. See https://no-color.org.
 inline auto color_from_env(
@@ -144,7 +157,7 @@ inline auto enable_vt_mode(int fd) -> bool
 // is_terminal has already found to be a terminal.
 inline auto is_color_terminal(std::streambuf const* osbuf) -> bool
 {
-    if (auto nc = std::getenv("NO_COLOR"); nc && *nc)
+    if (auto nc = env("NO_COLOR"); nc && *nc)
         return false;
 
 #ifdef _WIN32
@@ -155,8 +168,8 @@ inline auto is_color_terminal(std::streambuf const* osbuf) -> bool
     return is_msys_pty(fd) || enable_vt_mode(fd);
 #else
     (void)osbuf;
-    static const bool result = color_from_env(std::getenv("NO_COLOR"),
-        std::getenv("COLORTERM"), std::getenv("TERM"));
+    static const bool result = color_from_env(env("NO_COLOR"),
+        env("COLORTERM"), env("TERM"));
     return result;
 #endif
 }

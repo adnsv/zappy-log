@@ -2,7 +2,8 @@
 #pragma once
 
 // Minimal test harness: CHECK records a failure and continues; main returns
-// the failure count so CTest reports it.
+// the failure count so CTest reports it. Failures print the line and the
+// values, not the expression: MSVC cannot stringize raw string literals.
 
 #include <cstdio>
 #include <filesystem>
@@ -34,8 +35,8 @@ inline auto fresh_dir(std::string const& name) -> std::filesystem::path
 #define CHECK(cond)                                                            \
     do {                                                                       \
         if (!(cond)) {                                                         \
-            std::fprintf(stderr, "%s:%d: CHECK failed: %s\n", __FILE__,        \
-                __LINE__, #cond);                                              \
+            std::fprintf(                                                      \
+                stderr, "%s:%d: CHECK failed\n", __FILE__, __LINE__);          \
             ++zappy_test::failures;                                            \
         }                                                                      \
     } while (0)
@@ -46,9 +47,8 @@ inline auto fresh_dir(std::string const& name) -> std::filesystem::path
         auto const& vb_ = (b);                                                 \
         if (!(va_ == vb_)) {                                                   \
             std::ostringstream os_;                                            \
-            os_ << __FILE__ << ":" << __LINE__ << ": CHECK_EQ failed: " #a     \
-                << " == " #b "\n  left:  " << va_ << "\n  right: " << vb_      \
-                << "\n";                                                       \
+            os_ << __FILE__ << ":" << __LINE__ << ": CHECK_EQ failed"          \
+                << "\n  left:  " << va_ << "\n  right: " << vb_ << "\n";        \
             std::fputs(os_.str().c_str(), stderr);                             \
             ++zappy_test::failures;                                            \
         }                                                                      \

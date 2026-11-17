@@ -57,6 +57,9 @@ inline auto to_string(level v, bool upper_case = false) -> std::string
     return std::string(buf, p);
 }
 
+// digit returns the decimal digit character for v (0..9).
+constexpr auto digit(unsigned v) -> char { return char('0' + v); }
+
 // length of a formatted timestamp: 2006-01-02T15:04:05.000Z
 inline constexpr std::size_t timestamp_chars = 24;
 
@@ -100,42 +103,42 @@ inline auto to_chars(char* first, char* last, clock::time_point const& t)
 
     first[23] = 'Z';
 
-    first[22] = '0' + (milliseconds % 10);
+    first[22] = digit(milliseconds % 10);
     milliseconds /= 10;
-    first[21] = '0' + (milliseconds % 10);
+    first[21] = digit(milliseconds % 10);
     milliseconds /= 10;
-    first[20] = '0' + milliseconds;
+    first[20] = digit(milliseconds);
 
     first[19] = '.';
 
-    first[18] = '0' + (sod % 10);
+    first[18] = digit(sod % 10);
     sod /= 10;
-    first[17] = '0' + (sod % 6);
+    first[17] = digit(sod % 6);
     sod /= 6;
     first[16] = ':';
-    first[15] = '0' + (sod % 10);
+    first[15] = digit(sod % 10);
     sod /= 10;
-    first[14] = '0' + (sod % 6);
+    first[14] = digit(sod % 6);
     sod /= 6;
     first[13] = ':';
-    first[12] = '0' + (sod % 10);
+    first[12] = digit(sod % 10);
     sod /= 10;
-    first[11] = '0' + (sod % 10);
+    first[11] = digit(sod % 10);
 
     first[10] = 'T';
 
-    first[9] = '0' + (d % 10);
-    first[8] = '0' + (d / 10);
+    first[9] = digit(d % 10);
+    first[8] = digit(d / 10);
     first[7] = '-';
-    first[6] = '0' + (m % 10);
-    first[5] = '0' + (m / 10);
+    first[6] = digit(m % 10);
+    first[5] = digit(m / 10);
     first[4] = '-';
-    first[3] = '0' + (y % 10);
+    first[3] = digit(y % 10);
     y /= 10;
-    first[2] = '0' + (y % 10);
+    first[2] = digit(y % 10);
     y /= 10;
-    first[1] = '0' + (y % 10);
-    first[0] = '0' + (y / 10);
+    first[1] = digit(y % 10);
+    first[0] = digit(y / 10);
 
     return {first + timestamp_chars, std::errc{}};
 }

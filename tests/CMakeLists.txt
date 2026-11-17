@@ -2,7 +2,7 @@ set(ZAPPYLOG_TEST_WARNINGS
     $<$<CXX_COMPILER_ID:MSVC>:/W4 /permissive->
     $<$<NOT:$<CXX_COMPILER_ID:MSVC>>:-Wall -Wextra>)
 
-foreach(name queue format file core exit)
+foreach(name format sync async best_effort file exit)
     add_executable(test_${name} test_${name}.cpp)
     target_link_libraries(test_${name} PRIVATE zappy-log)
     target_compile_options(test_${name} PRIVATE ${ZAPPYLOG_TEST_WARNINGS})

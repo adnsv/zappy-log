@@ -19,6 +19,11 @@ else()
     set(ZAPPYLOG_TOP_LEVEL OFF)
 endif()
 
+# compile_commands.json for clangd (see .clangd)
+if(ZAPPYLOG_TOP_LEVEL)
+    set(CMAKE_EXPORT_COMPILE_COMMANDS ON)
+endif()
+
 option(ZAPPYLOG_BUILD_EXAMPLE "Build zappy-log example" ${ZAPPYLOG_TOP_LEVEL})
 if (ZAPPYLOG_BUILD_EXAMPLE)
     add_subdirectory("example")

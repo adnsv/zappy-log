@@ -25,7 +25,7 @@ static void bare_filename()
     auto const saved = fs::current_path();
     fs::current_path(dir);
     {
-        auto core = zappy::make_core(8, {zappy::rotating_json_file_sink("bare.jsonl")});
+        auto core = zappy::make_core({zappy::rotating_json_file_sink("bare.jsonl")});
         zappy::logger{"t", core}.info("hello");
     }
     fs::current_path(saved);

@@ -4,7 +4,7 @@
 #include <iostream>
 #include <memory>
 #include <mutex>
-#include <string>
+#include <string_view>
 #include <zappy/details/common.hpp>
 #include <zappy/details/fmt.hpp>
 #include <zappy/details/terminal.hpp>
@@ -13,52 +13,50 @@ namespace zappy {
 
 namespace details {
 
-struct console_sink_impl : public sink {
-    std::string scratch;
+struct console_sink_impl final : public sink {
     std::ostream& out;
-    ansi_fmt fmt;
 
-    console_sink_impl(std::ostream& s, level_filter&& f)
-        : sink{std::move(f)}
+    console_sink_impl(std::ostream& s, level_mask m)
+        : sink{ansi_format(is_terminal(s.rdbuf()) &&
+                           is_color_terminal(s.rdbuf())),
+              m}
         , out{s}
-        , fmt{is_terminal(s.rdbuf()) && is_color_terminal(s.rdbuf())}
     {
     }
 
-    void prepare_output(std::string& out, msg const& m)
+    // one lock for all console sinks: stdout and stderr often end up in the
+    // same place, and their lines must not interleave
+    static auto console_mutex() -> std::mutex&
     {
-        out.clear();
-        fmt.format(out, m);
+        static auto m = std::mutex{};
+        return m;
     }
 
-    void write(msg const& m) override
+    void write(std::string_view bytes) override
     {
-        prepare_output(scratch, m);
-        scratch += "\n";
-
-        // use global mutex in case stdout and stderr point to the same location
-        static auto global_mux = std::mutex{};
-        auto _ = std::unique_lock(global_mux);
-        out.write(scratch.data(), scratch.size());
+        auto _ = std::lock_guard{console_mutex()};
+        out.write(bytes.data(), std::streamsize(bytes.size()));
     }
 
-    void flush() override {
+    void flush() override
+    {
+        auto _ = std::lock_guard{console_mutex()};
         out.flush();
     }
 };
 
 } // namespace details
 
-// Each call returns a new sink with its own filter; writes from all console
-// sinks are serialized, so output lines never interleave.
-inline auto stdout_sink(level_filter&& f) -> sink_ptr
+// stdout_sink and stderr_sink write colored text when the stream is a
+// terminal that supports it. Each call returns a new sink with its own mask.
+inline auto stdout_sink(level_mask m = all_levels) -> sink_ptr
 {
-    return std::make_shared<details::console_sink_impl>(std::cout, std::move(f));
+    return std::make_shared<details::console_sink_impl>(std::cout, m);
 }
 
-inline auto stderr_sink(level_filter&& f) -> sink_ptr
+inline auto stderr_sink(level_mask m = all_levels) -> sink_ptr
 {
-    return std::make_shared<details::console_sink_impl>(std::cerr, std::move(f));
+    return std::make_shared<details::console_sink_impl>(std::cerr, m);
 }
 
 } // namespace zappy
