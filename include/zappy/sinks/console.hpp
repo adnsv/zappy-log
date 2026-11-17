@@ -1,5 +1,10 @@
+// Copyright (c) 2024-2026 Alex Denisov
 #pragma once
 
+#include <iostream>
+#include <memory>
+#include <mutex>
+#include <string>
 #include <zappy/details/common.hpp>
 #include <zappy/details/fmt.hpp>
 #include <zappy/details/terminal.hpp>
@@ -16,7 +21,7 @@ struct console_sink_impl : public sink {
     console_sink_impl(std::ostream& s, level_filter&& f)
         : sink{std::move(f)}
         , out{s}
-        , fmt{is_terminal(s.rdbuf()) && is_color_terminal()}
+        , fmt{is_terminal(s.rdbuf()) && is_color_terminal(s.rdbuf())}
     {
     }
 
@@ -44,18 +49,16 @@ struct console_sink_impl : public sink {
 
 } // namespace details
 
+// Each call returns a new sink with its own filter; writes from all console
+// sinks are serialized, so output lines never interleave.
 inline auto stdout_sink(level_filter&& f) -> sink_ptr
 {
-    static auto v =
-        std::make_shared<details::console_sink_impl>(std::cout, std::move(f));
-    return v;
+    return std::make_shared<details::console_sink_impl>(std::cout, std::move(f));
 }
 
 inline auto stderr_sink(level_filter&& f) -> sink_ptr
 {
-    static auto v =
-        std::make_shared<details::console_sink_impl>(std::cerr, std::move(f));
-    return v;
+    return std::make_shared<details::console_sink_impl>(std::cerr, std::move(f));
 }
 
 } // namespace zappy

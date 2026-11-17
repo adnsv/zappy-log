@@ -1,6 +1,10 @@
+// Copyright (c) 2024-2026 Alex Denisov
 #pragma once
 
 #include <charconv>
+#include <cstddef>
+#include <cstdint>
+#include <ctime>
 #include <functional>
 #include <string>
 #include <string_view>
@@ -33,7 +37,8 @@ inline auto to_sv(level v, bool upper_case = false) -> std::string_view
     case level::error:
         return upper_case ? "ERROR" : "error";
     case level::critical:
-        return upper_case ? "CRITICAL" : "critical";
+        // written as zap's "fatal", which log viewers already recognize
+        return upper_case ? "FATAL" : "fatal";
     default:
         return "<INVALID>";
     }
@@ -48,27 +53,31 @@ inline auto to_chars(char* first, char* last, level v, bool upper_case = false)
 inline auto to_string(level v, bool upper_case = false) -> std::string
 {
     char buf[16];
-    auto [p, _] = to_chars(buf, buf + 27, v, upper_case);
+    auto [p, _] = to_chars(buf, buf + sizeof(buf), v, upper_case);
     return std::string(buf, p);
 }
 
+// length of a formatted timestamp: 2006-01-02T15:04:05.000Z
+inline constexpr std::size_t timestamp_chars = 24;
+
+// to_chars writes t as RFC 3339 UTC with milliseconds.
 inline auto to_chars(char* first, char* last, clock::time_point const& t)
     -> std::to_chars_result
 {
-    if (last - first < 27)
+    if (last - first < std::ptrdiff_t(timestamp_chars))
         return {last, std::errc::value_too_large};
 
     static constexpr long long posix_epoch =
         62135683200ll; // UTC epoch,  seconds
 
-    auto const since_epoch = t.time_since_epoch();
+    // floor, not duration_cast: times before the epoch must round down
     auto const sec_since_epoch =
-        std::chrono::duration_cast<std::chrono::seconds>(since_epoch);
+        std::chrono::floor<std::chrono::seconds>(t.time_since_epoch());
     auto u = std::time_t(posix_epoch + sec_since_epoch.count());
-    auto milliseconds =
-        std::chrono::duration_cast<std::chrono::milliseconds>(since_epoch)
-            .count() %
-        1000;
+    auto milliseconds = unsigned(
+        std::chrono::floor<std::chrono::milliseconds>(
+            t.time_since_epoch() - sec_since_epoch)
+            .count());
 
     // Rata Die algorithm by Peter Baum
     auto rdn = unsigned(u / 86400);
@@ -85,18 +94,12 @@ inline auto to_chars(char* first, char* last, clock::time_point const& t)
         ++y;
         m -= 12;
     };
-    static constexpr uint16_t _day_offset[12] = {
+    static constexpr std::uint16_t _day_offset[12] = {
         306, 337, 0, 31, 61, 92, 122, 153, 184, 214, 245, 275};
     auto d = c - _day_offset[m - 1];
 
-    first[26] = 'Z';
+    first[23] = 'Z';
 
-    first[25] = '0' + (milliseconds % 10);
-    milliseconds /= 10;
-    first[24] = '0' + (milliseconds % 10);
-    milliseconds /= 10;
-    first[23] = '0' + (milliseconds % 10);
-    milliseconds /= 10;
     first[22] = '0' + (milliseconds % 10);
     milliseconds /= 10;
     first[21] = '0' + (milliseconds % 10);
@@ -134,13 +137,13 @@ inline auto to_chars(char* first, char* last, clock::time_point const& t)
     first[1] = '0' + (y % 10);
     first[0] = '0' + (y / 10);
 
-    return {first + 27, std::errc{}};
+    return {first + timestamp_chars, std::errc{}};
 }
 
 inline auto to_string(clock::time_point const& t) -> std::string
 {
-    char buf[27];
-    auto [p, _] = to_chars(buf, buf + 27, t);
+    char buf[timestamp_chars];
+    auto [p, _] = to_chars(buf, buf + timestamp_chars, t);
     return std::string(buf, p);
 }
 

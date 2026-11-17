@@ -1,3 +1,4 @@
+// Copyright (c) 2024-2026 Alex Denisov
 #pragma once
 
 #include <chrono>
@@ -15,19 +16,39 @@ enum class level {
     info,// info is the default logging priority
     warn,// warning messages are more important than info
     error,// high priority messages. i.e., If a system is running smoothly, it should not generate any error-level messages
-    critical,// highest priority, critical errors that require special attention
+    critical,// highest priority, critical errors that require special attention; written as "fatal" (zap's name)
 };
 
 using clock = std::chrono::system_clock;
 
+namespace details {
+// text accepts anything string-like; a null char pointer becomes "" instead of
+// crashing (e.g. a getenv() result passed straight through).
+struct text {
+    std::string_view sv;
+    text(std::string_view s) noexcept
+        : sv{s}
+    {
+    }
+    text(std::string const& s) noexcept
+        : sv{s}
+    {
+    }
+    text(char const* s) noexcept
+        : sv{s ? std::string_view{s} : std::string_view{}}
+    {
+    }
+};
+} // namespace details
+
 struct attribute {
     std::string key;
     std::string value;
-    attribute(attribute const&) noexcept = default;
+    attribute(attribute const&) = default;
     attribute(attribute&&) noexcept = default;
-    attribute(std::string_view k, std::string_view v) noexcept
-        : key{k}
-        , value{v}
+    attribute(details::text k, details::text v)
+        : key{k.sv}
+        , value{v.sv}
     {
     }
     auto operator=(attribute const&) -> attribute& = default;

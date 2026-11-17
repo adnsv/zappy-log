@@ -1,3 +1,4 @@
+// Copyright (c) 2024-2026 Alex Denisov
 #pragma once
 
 #include <memory>

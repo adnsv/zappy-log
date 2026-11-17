@@ -1,13 +1,23 @@
+// Copyright (c) 2024-2026 Alex Denisov
 #pragma once
 
+#include <chrono>
 #include <filesystem>
 #include <fstream>
 #include <string>
 #include <string_view>
-#include <thread>
+#include <system_error>
 
 namespace zappy::details {
 
+// rotating_file writes to dir/stem.ext and, once the file would exceed
+// max_size, shifts it to dir/stem.1.ext, stem.1 to stem.2, and so on, keeping
+// at most max_count files. max_count 1 truncates the file in place; 0 never
+// rotates.
+//
+// Failures never throw and never lose data already written: a file that cannot
+// be opened is retried on a later write, and a rotation that cannot rename a
+// file is abandoned (the live file keeps growing) and retried later.
 struct rotating_file {
 public:
     struct policy {
@@ -16,19 +26,23 @@ public:
     };
 
 private:
+    using steady = std::chrono::steady_clock;
+    static constexpr auto retry_interval = std::chrono::seconds{1};
+
     policy policy_;
-    std::string fn_base;
-    std::string fn_ext;
+    std::filesystem::path dir_;
+    std::filesystem::path stem_;
+    std::filesystem::path ext_;
 
     std::size_t file_size = 0;
-
     std::ofstream strm;
+    steady::time_point next_open_attempt;
+    steady::time_point next_rotate_attempt;
 
     void open(bool truncate);
-    void reopen(bool truncate);
     void rotate();
     void close();
-    auto make_fn(std::size_t number = 0) -> std::filesystem::path;
+    auto make_fn(std::size_t number = 0) const -> std::filesystem::path;
 
 public:
     rotating_file(std::filesystem::path const& fn, policy const& p);
@@ -40,43 +54,44 @@ public:
     void flush();
 };
 
-inline void decompose_fn(
-    std::string const& fn, std::string& base, std::string& ext)
-{
-    if (auto p = fn.find_last_of('.');
-        p != std::string::npos && p != 0 && p != fn.size() - 1) {
-        base = fn.substr(0, p);
-        ext = fn.substr(p);
-    }
-    else {
-        base = fn;
-        ext = {};
-    }
-}
-
+// rename_file moves src to target, replacing target. It returns false, without
+// throwing, if target cannot be removed or src cannot be renamed.
 inline auto rename_file(std::filesystem::path const& src_fn,
     std::filesystem::path const& target_fn) -> bool
 {
-    std::filesystem::remove(target_fn);
     auto ec = std::error_code{};
+    std::filesystem::remove(target_fn, ec);
+    if (ec)
+        return false;
     std::filesystem::rename(src_fn, target_fn, ec);
-    return ec == std::error_code();
+    return !ec;
 }
 
 inline rotating_file::rotating_file(
     std::filesystem::path const& fn, policy const& p)
     : policy_{p}
 {
-    decompose_fn(fn.string(), fn_base, fn_ext);
+    // resolve once, so a later change of the working directory does not move
+    // the log
+    auto ec = std::error_code{};
+    auto abs = std::filesystem::absolute(fn, ec);
+    if (ec)
+        abs = fn;
+    dir_ = abs.parent_path();
+    stem_ = abs.stem();
+    ext_ = abs.extension();
     open(false);
 }
 
 inline rotating_file::rotating_file(rotating_file&& f)
     : policy_{f.policy_}
-    , fn_base{f.fn_base}
-    , fn_ext{f.fn_ext}
+    , dir_{std::move(f.dir_)}
+    , stem_{std::move(f.stem_)}
+    , ext_{std::move(f.ext_)}
     , file_size{f.file_size}
     , strm{std::move(f.strm)}
+    , next_open_attempt{f.next_open_attempt}
+    , next_rotate_attempt{f.next_rotate_attempt}
 {
     f.file_size = 0;
 }
@@ -88,23 +103,41 @@ inline void rotating_file::write(std::string_view sv)
     if (sv.empty())
         return;
 
+    if (!strm.is_open()) {
+        if (steady::now() < next_open_attempt)
+            return; // dropped: the file is unavailable
+        open(false);
+        if (!strm.is_open())
+            return;
+    }
+
     auto const sz = sv.size();
 
-    if (policy_.max_count && file_size + sz > policy_.max_size &&
-        file_size > 0) {
-        strm.flush();
+    if (policy_.max_count && file_size > 0 &&
+        file_size + sz > policy_.max_size &&
+        steady::now() >= next_rotate_attempt) {
         rotate();
+        if (!strm.is_open())
+            return;
     }
 
-    if (strm.is_open()) {
-        strm.write(sv.data(), sz);
-        file_size += sz;
+    strm.write(sv.data(), sz);
+    if (!strm) {
+        // e.g. disk full: reopen on a later write rather than write into a
+        // stream stuck in a failed state
+        close();
+        next_open_attempt = steady::now() + retry_interval;
+        return;
     }
+    file_size += sz;
 }
 
 inline void rotating_file::flush()
 {
-    strm.flush();
+    if (strm.is_open() && !strm.flush()) {
+        close();
+        next_open_attempt = steady::now() + retry_interval;
+    }
 }
 
 inline void rotating_file::close()
@@ -113,76 +146,64 @@ inline void rotating_file::close()
     strm.close();
 }
 
-inline auto rotating_file::make_fn(std::size_t number) -> std::filesystem::path
+inline auto rotating_file::make_fn(std::size_t number) const
+    -> std::filesystem::path
 {
-    auto fn = fn_base;
+    auto name = stem_;
     if (number) {
-        fn += '.';
-        fn += std::to_string(number);
+        name += ".";
+        name += std::to_string(number);
     }
-    fn += fn_ext;
-    return fn;
+    name += ext_;
+    return dir_ / name;
 }
 
 inline void rotating_file::open(bool truncate)
 {
     close();
 
-    auto const open_tries = std::size_t{5};
-    auto const open_interval = std::chrono::milliseconds(50);
+    auto ec = std::error_code{};
+    if (!dir_.empty())
+        std::filesystem::create_directories(dir_, ec);
 
     auto const fn = make_fn();
-
-    for (int tries = 0; tries < open_tries; ++tries) {
-        auto ec = std::error_code{};
-        std::filesystem::create_directories(fn.parent_path(), ec);
-        if (ec != std::error_code()) {
-            std::this_thread::sleep_for(open_interval);
-            continue;
-        }
-
-        if (truncate) {
-            auto tmp = std::ofstream{fn, std::ios::out | std::ios::binary};
-            if (!tmp.is_open()) {
-                std::this_thread::sleep_for(open_interval);
-                continue;
-            }
-            tmp.close();
-        }
-
-        strm.open(fn, std::ios::out | std::ios::app | std::ios::binary);
-        if (!strm.is_open()) {
-            std::this_thread::sleep_for(open_interval);
-            continue;
-        }
-
-        file_size = std::filesystem::file_size(fn);
+    strm.open(fn, std::ios::out | std::ios::binary |
+                      (truncate ? std::ios::trunc : std::ios::app));
+    if (!strm.is_open()) {
+        strm.clear();
+        next_open_attempt = steady::now() + retry_interval;
         return;
     }
-}
 
-inline void rotating_file::reopen(bool truncate) { open(true); }
+    auto const sz = std::filesystem::file_size(fn, ec);
+    file_size = ec ? 0 : std::size_t(sz);
+}
 
 inline void rotating_file::rotate()
 {
-    if (policy_.max_count < 2)
+    if (policy_.max_count == 1) {
+        open(true);
         return;
+    }
 
     close();
+
+    // shift oldest first, so a failure part way leaves every file in place
     for (auto i = policy_.max_count - 1; i > 0; --i) {
-        auto src = make_fn(i - 1);
-        if (!std::filesystem::exists(src))
+        auto const src = make_fn(i - 1);
+        auto ec = std::error_code{};
+        if (!std::filesystem::exists(src, ec))
             continue;
 
-        auto target = make_fn(i);
-        if (!rename_file(src, target)) {
-            std::this_thread::sleep_for(std::chrono::milliseconds(100));
-            if (!rename_file(src, target)) {
-                reopen(true);
-            }
+        if (!rename_file(src, make_fn(i))) {
+            // e.g. on Windows another process holds the file open; keep
+            // appending to the live file and try again later
+            next_rotate_attempt = steady::now() + retry_interval;
+            break;
         }
     }
-    reopen(true);
+
+    open(false);
 }
 
 } // namespace zappy::details

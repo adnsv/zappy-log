@@ -1,7 +1,10 @@
+// Copyright (c) 2024-2026 Alex Denisov
 #pragma once
 
 #include <filesystem>
+#include <memory>
 #include <mutex>
+#include <string>
 #include <zappy/details/common.hpp>
 #include <zappy/details/fmt.hpp>
 #include <zappy/details/rotating-file.hpp>
@@ -51,7 +54,7 @@ struct rotating_file_sink_impl : public sink {
         f.write(scratch);
     }
 
-    void flush() {
+    void flush() override {
         auto _ = std::unique_lock(write_mux);
         f.flush();
     }

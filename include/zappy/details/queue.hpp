@@ -1,10 +1,12 @@
+// Copyright (c) 2024-2026 Alex Denisov
 #pragma once
 
-#include <atomic>
+#include <algorithm>
+#include <chrono>
 #include <condition_variable>
 #include <mutex>
-#include <zappy/details/circular.hpp>
 #include <vector>
+#include <zappy/details/circular.hpp>
 
 namespace zappy::details {
 
@@ -17,8 +19,9 @@ private:
     std::condition_variable not_full;
 
 public:
+    // capacity 0 is treated as 1, so a push always has somewhere to go
     queue(std::size_t capacity)
-        : buffer_(capacity)
+        : buffer_(std::max<std::size_t>(capacity, 1))
         , circular_{buffer_}
     {
     }
@@ -39,6 +42,17 @@ public:
         not_empty.notify_one();
     }
 
+    // try_push never blocks: it returns false when the queue is full
+    auto try_push(T&& v) -> bool
+    {
+        auto lock = std::unique_lock(mux_);
+        if (circular_.full())
+            return false;
+        circular_.push_back(std::move(v));
+        not_empty.notify_one();
+        return true;
+    }
+
     auto try_pop(T& v) -> bool
     {
         {
@@ -54,10 +68,10 @@ public:
 
     auto try_pop(T& v, std::chrono::milliseconds wait_duration) -> bool
     {
-        auto lock = std::unique_lock(mux_);
         {
+            auto lock = std::unique_lock(mux_);
             if (!not_empty.wait_for(lock, wait_duration,
-                    [this] { return !this->circular.empty(); }))
+                    [this] { return !this->circular_.empty(); }))
                 return false;
 
             v = std::move(circular_.front());
@@ -84,4 +98,4 @@ public:
     }
 };
 
-}
+} // namespace zappy::details

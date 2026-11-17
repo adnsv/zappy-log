@@ -1,5 +1,8 @@
+// Copyright (c) 2024-2026 Alex Denisov
 #pragma once
 
+#include <chrono>
+#include <condition_variable>
 #include <functional>
 #include <mutex>
 #include <thread>

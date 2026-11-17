@@ -1,8 +1,15 @@
+// Copyright (c) 2024-2026 Alex Denisov
 #pragma once
 
+#include <algorithm>
 #include <array>
+#include <cstdio>
+#include <cstdlib>
 #include <cstring>
 #include <iostream>
+#include <memory>
+#include <new>
+#include <string>
 
 #ifdef _WIN32
 #include <io.h>
@@ -19,10 +26,12 @@ namespace zappy::details {
 inline bool is_msys_pty(int fd) noexcept
 {
     // Dynamic load for binary compability with old Windows
+    // via void(*)() so GCC's -Wcast-function-type accepts the conversion
     const auto ptrGetFileInformationByHandleEx =
         reinterpret_cast<decltype(&GetFileInformationByHandleEx)>(
-            GetProcAddress(GetModuleHandle(TEXT("kernel32.dll")),
-                "GetFileInformationByHandleEx"));
+            reinterpret_cast<void (*)()>(
+                GetProcAddress(GetModuleHandle(TEXT("kernel32.dll")),
+                    "GetFileInformationByHandleEx")));
     if (!ptrGetFileInformationByHandleEx) {
         return false;
     }
@@ -98,29 +107,57 @@ inline auto is_terminal(std::streambuf const* osbuf) -> bool
     return false;
 }
 
-inline auto is_color_terminal() -> bool
+// color_from_env decides from NO_COLOR, COLORTERM and TERM (null when unset)
+// whether a terminal takes ANSI colors. See https://no-color.org.
+inline auto color_from_env(
+    char const* no_color, char const* colorterm, char const* term) -> bool
 {
+    if (no_color && *no_color)
+        return false;
+    if (colorterm && *colorterm)
+        return true;
+    if (!term || std::strcmp(term, "dumb") == 0)
+        return false;
+
+    static constexpr std::array<char const*, 16> terms = {{"ansi", "color",
+        "console", "cygwin", "gnome", "konsole", "kterm", "linux", "msys",
+        "putty", "rxvt", "screen", "vt100", "xterm", "alacritty", "vt102"}};
+    return std::any_of(terms.begin(), terms.end(),
+        [term](char const* t) { return std::strstr(term, t) != nullptr; });
+}
+
 #ifdef _WIN32
-    return true;
+// enable_vt_mode turns on ANSI escape processing for a Windows console.
+// Returns false for an old console that does not support it.
+inline auto enable_vt_mode(int fd) -> bool
+{
+    HANDLE h = reinterpret_cast<HANDLE>(_get_osfhandle(fd));
+    DWORD mode = 0;
+    if (h == INVALID_HANDLE_VALUE || !GetConsoleMode(h, &mode))
+        return false;
+    if (mode & ENABLE_VIRTUAL_TERMINAL_PROCESSING)
+        return true;
+    return SetConsoleMode(h, mode | ENABLE_VIRTUAL_TERMINAL_PROCESSING) != 0;
+}
+#endif
+
+// is_color_terminal reports whether colors should be written to osbuf, which
+// is_terminal has already found to be a terminal.
+inline auto is_color_terminal(std::streambuf const* osbuf) -> bool
+{
+    if (auto nc = std::getenv("NO_COLOR"); nc && *nc)
+        return false;
+
+#ifdef _WIN32
+    // mintty and other msys/cygwin terminals interpret ANSI themselves; a
+    // Windows console needs VT processing switched on
+    auto const fd = osbuf == std::cout.rdbuf() ? _fileno(stdout)
+                                               : _fileno(stderr);
+    return is_msys_pty(fd) || enable_vt_mode(fd);
 #else
-    static const bool result = []() {
-        if (!std::getenv("COLORTERM"))
-            return true;
-
-        static constexpr std::array<char const*, 16> terms = {{"ansi", "color",
-            "console", "cygwin", "gnome", "konsole", "kterm", "linux", "msys",
-            "putty", "rxvt", "screen", "vt100", "xterm", "alacritty", "vt102"}};
-
-        auto env_term = std::getenv("TERM");
-        if (!env_term)
-            return false;
-
-        return std::any_of(
-            terms.begin(), terms.end(), [env_term](char const* term) {
-                return std::strstr(env_term, term) != nullptr;
-            });
-    }();
-
+    (void)osbuf;
+    static const bool result = color_from_env(std::getenv("NO_COLOR"),
+        std::getenv("COLORTERM"), std::getenv("TERM"));
     return result;
 #endif
 }

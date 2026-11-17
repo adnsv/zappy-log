@@ -1,3 +1,4 @@
+// Copyright (c) 2024-2026 Alex Denisov
 #pragma once
 
 #include <zappy/details/ansi.hpp>
@@ -13,15 +14,15 @@ inline void to_json(std::string& out, msg const& m)
     out.clear();
     auto w = [&](std::string_view sv) { out += sv; };
 
-    w("{\"timestamp\":\"");
-    char buf[27];
-    auto [p, _] = to_chars(buf, buf + 27, m.timestamp);
+    w("{\"ts\":\"");
+    char buf[timestamp_chars];
+    auto [p, _] = to_chars(buf, buf + timestamp_chars, m.timestamp);
     w(std::string_view(buf, p - buf));
     w("\"");
 
     if (!m.logger_name.empty()) {
         w(",\"logger\":\"");
-        w(m.logger_name);
+        details::json_scramble(w, m.logger_name);
         w("\"");
     }
 
@@ -29,7 +30,7 @@ inline void to_json(std::string& out, msg const& m)
     w(zappy::to_sv(m.level));
     w("\"");
 
-    w(",\"message\":\"");
+    w(",\"msg\":\"");
     details::json_scramble(w, m.message);
     w("\"");
 
@@ -50,13 +51,13 @@ inline void to_text(std::string& out, msg const& m)
     out.clear();
     auto w = [&](std::string_view sv) { out += sv; };
 
-    char buf[27];
-    auto [p, _] = to_chars(buf, buf + 27, m.timestamp);
+    char buf[timestamp_chars];
+    auto [p, _] = to_chars(buf, buf + timestamp_chars, m.timestamp);
     w(std::string_view(buf, p - buf));
 
     if (!m.logger_name.empty()) {
         w(" [");
-        w(m.logger_name);
+        details::json_scramble(w, m.logger_name);
         w("]");
     }
 
@@ -131,6 +132,7 @@ inline ansi_fmt::ansi_fmt(bool use_ansi_sequences)
     attr = {
         .before = s(ansi::dark) + std::string(" | "),
         .between = std::string("=") + s(ansi::reset),
+        .after = {},
     };
 }
 
@@ -145,12 +147,14 @@ inline void ansi_fmt::format(std::string& out, msg const& m)
         w(fmt.after);
     };
 
-    char buf[27];
-    auto [p, _] = to_chars(buf, buf + 27, m.timestamp);
+    char buf[timestamp_chars];
+    auto [p, _] = to_chars(buf, buf + timestamp_chars, m.timestamp);
     wsection(timestamp, std::string_view(buf, p - buf));
 
     if (!m.logger_name.empty()) {
-        wsection(logger, m.logger_name);
+        w(logger.before);
+        details::json_scramble(w, m.logger_name);
+        w(logger.after);
     }
 
     w(level.before);

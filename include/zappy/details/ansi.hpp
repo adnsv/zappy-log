@@ -1,5 +1,7 @@
+// Copyright (c) 2024-2026 Alex Denisov
 #pragma once
 
+#include <cstdint>
 #include <iostream>
 #include <string>
 #include <string_view>
@@ -40,7 +42,7 @@ std::string_view const on_white = "\x1b[47m";
 std::string_view const default_bg = "\x1b[49m";
 
 namespace internal {
-constexpr auto gray_idx(std::uint8_t level) -> uint8_t
+constexpr auto gray_idx(std::uint8_t level) -> std::uint8_t
 {
     auto v = (level * 26) >> 8;
     if (v == 0)
