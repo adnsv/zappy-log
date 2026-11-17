@@ -1,10 +1,12 @@
 // Copyright (c) 2024-2026 Alex Denisov
 #include "check.hpp"
 
+#include <algorithm>
 #include <atomic>
 #include <chrono>
 #include <condition_variable>
 #include <mutex>
+#include <stdexcept>
 #include <thread>
 #include <vector>
 #include <zappy/logger.hpp>
@@ -136,10 +138,43 @@ static void destroying_a_stuck_sink_does_not_hang()
     std::this_thread::sleep_for(50ms);
 }
 
+static void inner_sink_failures_are_reported()
+{
+    struct seen {
+        std::mutex m;
+        std::vector<zappy::error_kind> kinds;
+        std::vector<zappy::sink const*> sources;
+    } errors;
+    auto inner = zappy::func_sink(
+        [](std::string_view) { throw std::runtime_error("disk full"); },
+        [] { throw std::runtime_error("flush failed"); });
+    {
+        auto lg = zappy::logger{"t",
+            zappy::make_core({zappy::best_effort(inner, 16,
+                [&](zappy::error_info const& e) {
+                    auto _ = std::lock_guard{errors.m};
+                    errors.kinds.push_back(e.kind);
+                    errors.sources.push_back(e.source);
+                })})};
+        lg.info("one");
+        lg.info("two");
+    } // destroying the wrapper drains it
+    auto _ = std::lock_guard{errors.m};
+    auto const writes = std::count(errors.kinds.begin(), errors.kinds.end(),
+        zappy::error_kind::sink_write);
+    auto const flushes = std::count(errors.kinds.begin(), errors.kinds.end(),
+        zappy::error_kind::sink_flush);
+    CHECK_EQ(writes, 2);
+    CHECK(flushes >= 1);
+    CHECK(std::all_of(errors.sources.begin(), errors.sources.end(),
+        [&](zappy::sink const* s) { return s == inner.get(); }));
+}
+
 int main()
 {
     a_stuck_sink_never_stalls_the_core();
     a_recovered_sink_gets_everything();
     destroying_a_stuck_sink_does_not_hang();
+    inner_sink_failures_are_reported();
     return TEST_MAIN_RESULT();
 }

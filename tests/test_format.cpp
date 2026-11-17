@@ -232,6 +232,9 @@ static void level_masks()
     static_assert(!m.contains(level::critical));
     static_assert(zappy::all_levels.contains(level::debug));
     static_assert(zappy::levels(level::warn).contains(level::critical));
+    // reversed bounds are swapped, never an empty mask
+    static_assert(zappy::levels(level::error, level::debug).bits ==
+                  zappy::levels(level::debug, level::error).bits);
     constexpr auto set = zappy::level_mask{level::debug, level::critical};
     static_assert(set.contains(level::debug) && !set.contains(level::info));
     static_assert(set.contains(level::critical));

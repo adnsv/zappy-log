@@ -12,6 +12,7 @@
 #include <thread>
 #include <utility>
 #include <zappy/details/common.hpp>
+#include <zappy/details/core.hpp>
 
 namespace zappy {
 
@@ -27,6 +28,7 @@ struct sink_access {
 struct best_effort_state {
     sink_ptr inner;
     std::size_t capacity;
+    error_handler on_error;
 
     std::mutex m;
     std::condition_variable cv;
@@ -36,31 +38,54 @@ struct best_effort_state {
     bool stopping = false;
     bool done = false;
 
-    best_effort_state(sink_ptr s, std::size_t cap)
+    best_effort_state(sink_ptr s, std::size_t cap, error_handler h)
         : inner{std::move(s)}
         , capacity{cap ? cap : 1}
+        , on_error{h ? std::move(h) : default_error_handler()}
     {
+    }
+
+    // report runs on this sink's own thread, after the inner sink's lock is
+    // released, so a handler that logs cannot deadlock on it.
+    void report(error_kind k, std::string const& what) noexcept
+    {
+        try {
+            on_error({k, inner.get(), 1, what});
+        }
+        catch (...) {
+        }
     }
 
     void write_inner(std::string_view bytes)
     {
-        auto _ = std::lock_guard{sink_access::mutex(*inner)};
-        try {
-            inner->write(bytes);
+        auto failure = std::string{};
+        {
+            auto _ = std::lock_guard{sink_access::mutex(*inner)};
+            try {
+                inner->write(bytes);
+                return;
+            }
+            catch (...) {
+                failure = exception_text(std::current_exception());
+            }
         }
-        catch (...) {
-            // best effort: a failing sink loses the line
-        }
+        report(error_kind::sink_write, failure); // the line is lost
     }
 
     void flush_inner()
     {
-        auto _ = std::lock_guard{sink_access::mutex(*inner)};
-        try {
-            inner->flush();
+        auto failure = std::string{};
+        {
+            auto _ = std::lock_guard{sink_access::mutex(*inner)};
+            try {
+                inner->flush();
+                return;
+            }
+            catch (...) {
+                failure = exception_text(std::current_exception());
+            }
         }
-        catch (...) {
-        }
+        report(error_kind::sink_flush, failure);
     }
 
     // dropped_line formats the "messages dropped" notice in the inner sink's
@@ -128,10 +153,12 @@ struct best_effort_state {
 struct best_effort_sink final : sink {
     std::shared_ptr<best_effort_state> st;
 
-    best_effort_sink(sink_ptr inner, std::size_t capacity)
+    best_effort_sink(
+        sink_ptr inner, std::size_t capacity, error_handler on_error)
         // share the inner sink's formatter, so the core formats once
         : sink{formatter_ptr{inner, &inner->format()}, inner->levels()}
-        , st{std::make_shared<best_effort_state>(std::move(inner), capacity)}
+        , st{std::make_shared<best_effort_state>(
+              std::move(inner), capacity, std::move(on_error))}
     {
         std::thread{[s = st] { s->run(); }}.detach();
     }
@@ -176,12 +203,14 @@ struct best_effort_sink final : sink {
 // its own thread and a buffer of `capacity` lines. When the buffer is full,
 // lines for this sink are dropped and counted, and once the sink catches up
 // it writes one "messages dropped" line where the gap is. error() and
-// flush() do not wait for it.
-inline auto best_effort(sink_ptr inner, std::size_t capacity = 1024)
-    -> sink_ptr
+// flush() do not wait for it. Failures of the inner sink (a write or flush
+// that throws) go to on_error, called from this sink's own thread; the
+// default writes one line to stderr, at most once per 10 s per problem.
+inline auto best_effort(sink_ptr inner, std::size_t capacity = 1024,
+    error_handler on_error = {}) -> sink_ptr
 {
     return std::make_shared<details::best_effort_sink>(
-        std::move(inner), capacity);
+        std::move(inner), capacity, std::move(on_error));
 }
 
 } // namespace zappy

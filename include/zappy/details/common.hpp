@@ -43,9 +43,15 @@ struct level_mask {
     }
 };
 
-// levels returns the mask of all levels from min to max, inclusive.
+// levels returns the mask of all levels from min to max, inclusive. Reversed
+// bounds are swapped: levels(error, debug) is levels(debug, error).
 constexpr auto levels(level min, level max = level::critical) -> level_mask
 {
+    if (max < min) {
+        auto const t = min;
+        min = max;
+        max = t;
+    }
     auto m = level_mask{};
     for (auto l = unsigned(min); l <= unsigned(max); ++l)
         m.bits |= level_mask::bit(level(l));
