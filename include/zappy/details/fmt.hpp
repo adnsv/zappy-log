@@ -8,6 +8,38 @@
 
 namespace zappy {
 
+namespace details {
+
+// Characters that make a text-format key or value ambiguous: " | " separates
+// attributes and "=" separates a key from its value.
+inline constexpr std::string_view text_attr_specials = " |=\"";
+
+// text_field writes s escaped, quoted (logfmt style) when it is empty or
+// contains one of specials.
+template <typename Putter>
+void text_field(Putter put, std::string_view s, std::string_view specials)
+{
+    auto const quote =
+        s.empty() || s.find_first_of(specials) != std::string_view::npos;
+    if (quote)
+        put("\"");
+    json_scramble(put, s);
+    if (quote)
+        put("\"");
+}
+
+// text_message writes the message, quoted only if it contains "|" and so
+// could be read as attributes.
+template <typename Putter> void text_message(Putter put, std::string_view s)
+{
+    if (s.find('|') == std::string_view::npos)
+        json_scramble(put, s);
+    else
+        text_field(put, s, "|");
+}
+
+} // namespace details
+
 // formatting as json
 inline void to_json(std::string& out, msg const& m)
 {
@@ -70,13 +102,13 @@ inline void to_text(std::string& out, msg const& m)
         w(std::string_view("     ").substr(0, 5 - n));
 
     w(" ");
-    details::json_scramble(w, m.message);
+    details::text_message(w, m.message);
 
     for (auto const& attr : m.attributes) {
         w(" | ");
-        details::json_scramble(w, attr.key);
+        details::text_field(w, attr.key, details::text_attr_specials);
         w("=");
-        details::json_scramble(w, attr.value);
+        details::text_field(w, attr.value, details::text_attr_specials);
     }
 }
 
@@ -178,14 +210,14 @@ inline void ansi_fmt::format(std::string& out, msg const& m)
     w(level.after);
 
     w(message.before);
-    details::json_scramble(w, m.message);
+    details::text_message(w, m.message);
     w(message.after);
 
     for (auto const& attribute : m.attributes) {
         w(attr.before);
-        details::json_scramble(w, attribute.key);
+        details::text_field(w, attribute.key, details::text_attr_specials);
         w(attr.between);
-        details::json_scramble(w, attribute.value);
+        details::text_field(w, attribute.value, details::text_attr_specials);
         w(attr.after);
     }
 }

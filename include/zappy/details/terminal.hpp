@@ -13,7 +13,7 @@
 
 #ifdef _WIN32
 #include <io.h>
-#include <windows.h>
+#include <zappy/details/win32.hpp>
 #else
 #include <unistd.h>
 #endif
@@ -25,48 +25,46 @@ namespace zappy::details {
 
 inline bool is_msys_pty(int fd) noexcept
 {
-    // Dynamic load for binary compability with old Windows
-    // via void(*)() so GCC's -Wcast-function-type accepts the conversion
-    const auto ptrGetFileInformationByHandleEx =
-        reinterpret_cast<decltype(&GetFileInformationByHandleEx)>(
+    // Looked up at runtime, so the declaration needs no <windows.h> types.
+    // Via void(*)() so GCC's -Wcast-function-type accepts the conversion.
+    auto const get_info =
+        reinterpret_cast<win32::get_file_information_by_handle_ex_fn>(
             reinterpret_cast<void (*)()>(
-                GetProcAddress(GetModuleHandle(TEXT("kernel32.dll")),
+                GetProcAddress(GetModuleHandleW(L"kernel32.dll"),
                     "GetFileInformationByHandleEx")));
-    if (!ptrGetFileInformationByHandleEx) {
+    if (!get_info) {
         return false;
     }
 
-    HANDLE h = reinterpret_cast<HANDLE>(_get_osfhandle(fd));
-    if (h == INVALID_HANDLE_VALUE) {
+    void* h = reinterpret_cast<void*>(_get_osfhandle(fd));
+    if (h == win32::invalid_handle_value) {
         return false;
     }
 
     // Check that it's a pipe:
-    if (GetFileType(h) != FILE_TYPE_PIPE) {
+    if (GetFileType(h) != win32::file_type_pipe) {
         return false;
     }
 
-    // POD type is binary compatible with FILE_NAME_INFO from WinBase.h
-    // It have the same alignment and used to avoid UB in caller code
-    struct MY_FILE_NAME_INFO {
-        DWORD FileNameLength;
-        WCHAR FileName[MAX_PATH];
+    // binary compatible with FILE_NAME_INFO from WinBase.h
+    struct file_name_info {
+        unsigned long FileNameLength;
+        wchar_t FileName[win32::max_path];
     };
 
-    auto pNameInfo = std::unique_ptr<MY_FILE_NAME_INFO>(
-        new (std::nothrow) MY_FILE_NAME_INFO());
-    if (!pNameInfo) {
+    auto info = std::unique_ptr<file_name_info>(
+        new (std::nothrow) file_name_info());
+    if (!info) {
         return false;
     }
 
     // Check pipe name is template of
     // {"cygwin-","msys-"}XXXXXXXXXXXXXXX-ptyX-XX
-    if (!ptrGetFileInformationByHandleEx(
-            h, FileNameInfo, pNameInfo.get(), sizeof(MY_FILE_NAME_INFO))) {
+    if (!get_info(h, win32::file_name_info, info.get(),
+            sizeof(file_name_info))) {
         return false;
     }
-    std::wstring name(
-        pNameInfo->FileName, pNameInfo->FileNameLength / sizeof(WCHAR));
+    std::wstring name(info->FileName, info->FileNameLength / sizeof(wchar_t));
     if ((name.find(L"msys-") == std::wstring::npos &&
             name.find(L"cygwin-") == std::wstring::npos) ||
         name.find(L"-pty") == std::wstring::npos) {
@@ -131,13 +129,14 @@ inline auto color_from_env(
 // Returns false for an old console that does not support it.
 inline auto enable_vt_mode(int fd) -> bool
 {
-    HANDLE h = reinterpret_cast<HANDLE>(_get_osfhandle(fd));
-    DWORD mode = 0;
-    if (h == INVALID_HANDLE_VALUE || !GetConsoleMode(h, &mode))
+    void* h = reinterpret_cast<void*>(_get_osfhandle(fd));
+    unsigned long mode = 0;
+    if (h == win32::invalid_handle_value || !GetConsoleMode(h, &mode))
         return false;
-    if (mode & ENABLE_VIRTUAL_TERMINAL_PROCESSING)
+    if (mode & win32::enable_virtual_terminal_processing)
         return true;
-    return SetConsoleMode(h, mode | ENABLE_VIRTUAL_TERMINAL_PROCESSING) != 0;
+    return SetConsoleMode(
+               h, mode | win32::enable_virtual_terminal_processing) != 0;
 }
 #endif
 

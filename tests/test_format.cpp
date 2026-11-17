@@ -80,6 +80,42 @@ static void text_escapes_logger_name()
     CHECK(out.find('\n') == std::string::npos);
 }
 
+// Text output must stay unambiguous: a key, value or message that could be
+// read as more attributes is quoted (logfmt style).
+static auto text(zappy::msg const& m) -> std::string
+{
+    auto out = std::string{};
+    zappy::to_text(out, m);
+    return out;
+}
+
+static auto tail(std::string const& s) -> std::string
+{
+    // everything after "[info] " (level padding included)
+    return s.substr(s.find("] ") + 2);
+}
+
+static void text_quotes_ambiguous_fields()
+{
+    CHECK_EQ(tail(text(make_msg("", "plain", {{"k", "v"}, {"n", "42"}}))),
+        " plain | k=v | n=42");
+    CHECK_EQ(tail(text(make_msg("", "m", {{"user", "bob | admin=true"}}))),
+        R"( m | user="bob | admin=true")");
+    CHECK_EQ(tail(text(make_msg("", "m", {{"k=v", "x"}}))), R"( m | "k=v"=x)");
+    CHECK_EQ(tail(text(make_msg("", "m", {{"k", ""}}))), R"( m | k="")");
+    CHECK_EQ(tail(text(make_msg("", "m", {{"k", "a\"b"}}))), R"( m | k="a\"b")");
+    CHECK_EQ(tail(text(make_msg("", "m", {{"k", "two words"}}))),
+        R"( m | k="two words")");
+    // a message is quoted only when it could be read as attributes
+    CHECK_EQ(tail(text(make_msg("", "x=5 done"))), " x=5 done");
+    CHECK_EQ(tail(text(make_msg("", "a | b=c"))), R"( "a | b=c")");
+
+    auto out = std::string{};
+    auto f = zappy::ansi_fmt{false};
+    f.format(out, make_msg("", "a | b=c", {{"user", "bob | admin=true"}}));
+    CHECK(out.find(R"("a | b=c" | user="bob | admin=true")") != std::string::npos);
+}
+
 static void null_char_pointer_attribute()
 {
     char const* missing = nullptr;
@@ -110,6 +146,7 @@ int main()
     json_escapes_logger_name();
     json_replaces_invalid_utf8();
     text_escapes_logger_name();
+    text_quotes_ambiguous_fields();
     null_char_pointer_attribute();
     level_names();
     return TEST_MAIN_RESULT();

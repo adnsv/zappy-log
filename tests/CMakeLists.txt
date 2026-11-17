@@ -12,6 +12,15 @@ foreach(name queue format file core exit)
     set_tests_properties(${name} PROPERTIES TIMEOUT 30)
 endforeach()
 
+if(WIN32)
+    add_executable(test_win32 test_win32.cpp test_win32_order.cpp
+        test_win32_order2.cpp)
+    target_link_libraries(test_win32 PRIVATE zappy-log)
+    target_compile_options(test_win32 PRIVATE ${ZAPPYLOG_TEST_WARNINGS})
+    add_test(NAME win32 COMMAND test_win32)
+    set_tests_properties(win32 PROPERTIES TIMEOUT 30)
+endif()
+
 # Every header must compile on its own, without relying on what an earlier
 # include happened to pull in.
 file(GLOB_RECURSE ZAPPYLOG_HEADERS CONFIGURE_DEPENDS
